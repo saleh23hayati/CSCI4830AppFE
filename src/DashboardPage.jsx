@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import "./DashboardPage.css";
-import { getAccounts, getTransactions, getFraudAlerts } from "./api";
+import { getAccounts, getTransactions, getFraudAlerts, createTransaction } from "./api";
 
 export default function DashboardPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "transactions" | "fraud" | "settings"
@@ -129,7 +129,21 @@ export default function DashboardPage({ user, onLogout }) {
             accounts={accounts}
             loading={loading}
             onRefresh={loadAccounts}
-            goTransactions={() => setActiveTab("transactions")}  
+            goTransactions={() => setActiveTab("transactions")}
+            onCreateTransaction={async (transactionData) => {
+              try {
+                await createTransaction(transactionData);
+                // Refresh accounts to show updated balance
+                await loadAccounts();
+                // Refresh transactions to show new transaction
+                if (activeTab === "transactions") {
+                  await loadTransactions();
+                }
+                return { success: true };
+              } catch (err) {
+                return { success: false, error: err.message };
+              }
+            }}
           />
         )}
         {activeTab === "transactions" && (
@@ -154,9 +168,10 @@ export default function DashboardPage({ user, onLogout }) {
 
 /* ------------ DASHBOARD HOME (ACCOUNTS) ------------ */
 
-function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {} }) {
+function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {}, onCreateTransaction }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(accounts[0]?.id);
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -233,7 +248,25 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             </div>
             <div className="detail-actions">
               <button className="btn" onClick={goTransactions}>View Transactions</button>
+              <button className="btn btn-secondary" onClick={() => setShowTransactionForm(!showTransactionForm)}>
+                {showTransactionForm ? "Cancel" : "New Transaction"}
+              </button>
             </div>
+            {showTransactionForm && (
+              <TransactionForm
+                accountId={selected.id}
+                accountNumber={selected.accountNumber}
+                currentBalance={selected.balance}
+                onSuccess={async (result) => {
+                  if (result.success) {
+                    setShowTransactionForm(false);
+                    await onRefresh(); // Refresh accounts to show updated balance
+                  }
+                  return result;
+                }}
+                onCreateTransaction={onCreateTransaction}
+              />
+            )}
           </div>
         ) : (
           <div className="empty-big">Select an account</div>
@@ -419,5 +452,133 @@ function FraudAlertsPage({ alerts, loading, onRefresh }) {
         })
       )}
     </section>
+  );
+}
+
+/* ------------ TRANSACTION FORM ------------ */
+
+function TransactionForm({ accountId, accountNumber, currentBalance, onSuccess, onCreateTransaction }) {
+  const [transactionType, setTransactionType] = useState("DEPOSIT");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    // Validate amount
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      setError("Please enter a valid amount greater than zero");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const transactionData = {
+        account: { id: accountId },
+        transactionType: transactionType,
+        amount: amountNum,
+        description: description || undefined,
+      };
+
+      const result = await onCreateTransaction(transactionData);
+      
+      if (result.success) {
+        setSuccess(`Transaction ${transactionType.toLowerCase()} of $${amountNum.toFixed(2)} completed successfully!`);
+        // Reset form
+        setAmount("");
+        setDescription("");
+        // Clear success message after 3 seconds and call onSuccess
+        setTimeout(async () => {
+          setSuccess("");
+          await onSuccess(result);
+        }, 2000);
+      } else {
+        setError(result.error || "Failed to create transaction");
+      }
+    } catch (err) {
+      setError(err.message || "An error occurred while creating the transaction");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="transaction-form">
+      <h4 style={{ marginTop: "1.5rem", marginBottom: "1rem", fontSize: "16px", fontWeight: "600" }}>
+        Create New Transaction
+      </h4>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">Transaction Type</label>
+          <select
+            className="form-input"
+            value={transactionType}
+            onChange={(e) => setTransactionType(e.target.value)}
+            required
+          >
+            <option value="DEPOSIT">Deposit</option>
+            <option value="WITHDRAWAL">Withdrawal</option>
+            <option value="PURCHASE">Purchase</option>
+            <option value="TRANSFER_IN">Transfer In</option>
+            <option value="TRANSFER_OUT">Transfer Out</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Amount ($)</label>
+          <input
+            type="number"
+            className="form-input"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            step="0.01"
+            min="0.01"
+            required
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Description (Optional)</label>
+          <input
+            type="text"
+            className="form-input"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Transaction description"
+            maxLength={500}
+          />
+        </div>
+
+        {error && (
+          <div className="alert alert-error" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+            {success}
+          </div>
+        )}
+
+        <div className="form-actions">
+          <button type="submit" className="btn" disabled={loading}>
+            {loading ? "Processing..." : "Create Transaction"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: "0.75rem", fontSize: "12px", color: "#6b7280" }}>
+          Account: {accountNumber} | Current Balance: ${(currentBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </div>
+      </form>
+    </div>
   );
 }
