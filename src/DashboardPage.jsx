@@ -525,18 +525,28 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
     }
 
     try {
-      // For transfers, we need to create both TRANSFER_OUT (on source) and TRANSFER_IN (on destination)
-      // TRANSFER_OUT: source = current account, destination = selected account
-      // TRANSFER_IN: source = current account, destination = selected account (same logic, just different perspective)
+      // Determine source and destination accounts based on transfer type
+      // TRANSFER_OUT: source = current account (accountId), destination = dropdown account
+      // TRANSFER_IN: source = dropdown account, destination = current account (accountId)
       
-      const sourceAccountId = accountId;
-      const destinationAccountIdNum = parseInt(destinationAccountId);
+      let sourceAccountId, destinationAccountIdNum;
       
-      // Get destination account number for description
+      if (transactionType === "TRANSFER_OUT") {
+        sourceAccountId = accountId;
+        destinationAccountIdNum = parseInt(destinationAccountId);
+      } else {
+        // TRANSFER_IN
+        sourceAccountId = parseInt(destinationAccountId);
+        destinationAccountIdNum = accountId;
+      }
+      
+      // Get account numbers for descriptions
+      const sourceAccount = accounts.find(acc => acc.id === sourceAccountId);
       const destinationAccount = accounts.find(acc => acc.id === destinationAccountIdNum);
+      const sourceAccountNumber = sourceAccount?.accountNumber || sourceAccountId.toString();
       const destinationAccountNumber = destinationAccount?.accountNumber || destinationAccountIdNum.toString();
       
-      // Always create TRANSFER_OUT on source account first (this checks for sufficient funds)
+      // Create TRANSFER_OUT on source account first (this checks for sufficient funds)
       const transferOutData = {
         account: { id: sourceAccountId },
         transactionType: "TRANSFER_OUT",
@@ -558,7 +568,7 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
           account: { id: destinationAccountIdNum },
           transactionType: "TRANSFER_IN",
           amount: amountNum,
-          description: description || `Transfer from ${accountNumber}`,
+          description: description || `Transfer from ${sourceAccountNumber}`,
         };
         await onCreateTransaction(transferInData);
       } catch (transferErr) {
