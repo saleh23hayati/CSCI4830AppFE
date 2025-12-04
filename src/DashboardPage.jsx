@@ -1,20 +1,82 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import "./DashboardPage.css";
+import { getAccounts, getTransactions, getFraudAlerts } from "./api";
 
-const demoAccounts = [
-  { id: "chk-1234", type: "Checking", last4: "1234", nickname: "Everyday Spend", balance: 2845.71 },
-  { id: "svg-9876", type: "Savings", last4: "9876", nickname: "Emergency Fund", balance: 9200.0 },
-];
-
-const demoTransactions = [
-  { id: 1, date: "2025-10-10", desc: "Grocery Store", amount: -89.99 },
-  { id: 2, date: "2025-10-11", desc: "Payroll Deposit", amount: 3200.0 },
-  { id: 3, date: "2025-10-12", desc: "Coffee Shop", amount: -5.25 },
-  { id: 4, date: "2025-10-12", desc: "Online Purchase", amount: -82.0 },
-];
-
-export default function DashboardPage({ email = "user@securebank.com", onLogout }) {
+export default function DashboardPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "transactions" | "fraud" | "settings"
+  const [accounts, setAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [fraudAlerts, setFraudAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  
+  const username = user?.username || "user";
+
+  // Fetch accounts on mount
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  // Fetch transactions when transactions tab is active
+  useEffect(() => {
+    if (activeTab === "transactions") {
+      loadTransactions();
+    }
+  }, [activeTab]);
+
+  // Fetch fraud alerts when fraud tab is active
+  useEffect(() => {
+    if (activeTab === "fraud") {
+      loadFraudAlerts();
+    }
+  }, [activeTab]);
+
+  async function loadAccounts() {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await getAccounts();
+      setAccounts(data || []);
+    } catch (err) {
+      setError(err.message || "Failed to load accounts");
+      console.error("Error loading accounts:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadTransactions(params = {}) {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await getTransactions(params);
+      // Handle paginated response
+      if (data.content) {
+        setTransactions(data.content);
+      } else {
+        setTransactions(data || []);
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load transactions");
+      console.error("Error loading transactions:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadFraudAlerts() {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await getFraudAlerts();
+      setFraudAlerts(data || []);
+    } catch (err) {
+      setError(err.message || "Failed to load fraud alerts");
+      console.error("Error loading fraud alerts:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="shell">
@@ -56,17 +118,35 @@ export default function DashboardPage({ email = "user@securebank.com", onLogout 
 
       {/* Main content switches by tab */}
       <main className="main">
+        {error && (
+          <div className="alert alert-error" style={{ margin: "1rem", padding: "1rem" }}>
+            {error}
+          </div>
+        )}
         {activeTab === "dashboard" && (
           <DashboardHome 
-          email={email} 
-          accounts={demoAccounts}
-          goTransactions={() => setActiveTab("transactions")}  />
+            username={username} 
+            accounts={accounts}
+            loading={loading}
+            onRefresh={loadAccounts}
+            goTransactions={() => setActiveTab("transactions")}  
+          />
         )}
         {activeTab === "transactions" && (
-          <TransactionsPage transactions={demoTransactions} />
+          <TransactionsPage 
+            transactions={transactions}
+            loading={loading}
+            onRefresh={loadTransactions}
+          />
         )}
-        {activeTab === "fraud" && <FraudAlertsPage />}
-        {activeTab === "settings" && <UserSettingsPage email={email} />}
+        {activeTab === "fraud" && (
+          <FraudAlertsPage 
+            alerts={fraudAlerts}
+            loading={loading}
+            onRefresh={loadFraudAlerts}
+          />
+        )}
+        {activeTab === "settings" && <UserSettingsPage user={user} />}
       </main>
     </div>
   );
@@ -74,7 +154,7 @@ export default function DashboardPage({ email = "user@securebank.com", onLogout 
 
 /* ------------ DASHBOARD HOME (ACCOUNTS) ------------ */
 
-function DashboardHome({ email, accounts, goTransactions = () => {} }) {
+function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {} }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(accounts[0]?.id);
 
@@ -83,13 +163,25 @@ function DashboardHome({ email, accounts, goTransactions = () => {} }) {
     if (!q) return accounts;
     return accounts.filter(
       (a) =>
-        a.type.toLowerCase().includes(q) ||
-        a.nickname.toLowerCase().includes(q) ||
-        a.last4.includes(q)
+        a.accountType?.toLowerCase().includes(q) ||
+        a.accountNumber?.includes(q)
     );
   }, [query, accounts]);
 
   const selected = accounts.find((a) => a.id === selectedId) || filtered[0];
+
+  if (loading) {
+    return (
+      <div className="home-grid">
+        <section className="card">
+          <div className="card-head">
+            <h1 className="page-title">Dashboard</h1>
+            <p className="page-subtitle">Loading accounts...</p>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="home-grid">
@@ -97,9 +189,11 @@ function DashboardHome({ email, accounts, goTransactions = () => {} }) {
         <div className="card-head">
           <div>
             <h1 className="page-title">Dashboard</h1>
-            <p className="page-subtitle">Signed in as {email}</p>
+            <p className="page-subtitle">Signed in as {username}</p>
           </div>
-        
+          <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
+            Refresh
+          </button>
         </div>
 
         <ul className="acct-list">
@@ -110,16 +204,16 @@ function DashboardHome({ email, accounts, goTransactions = () => {} }) {
               onClick={() => setSelectedId(a.id)}
             >
               <div className="acct-type">
-                {a.type} •••• {a.last4}
+                {a.accountType || "Account"} •••• {a.accountNumber?.slice(-4) || a.id}
               </div>
-              <div className="acct-nick">{a.nickname}</div>
+              <div className="acct-nick">Account #{a.accountNumber || a.id}</div>
               <div className="acct-balance">
-                ${a.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ${(a.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </li>
           ))}
-          {filtered.length === 0 && (
-            <li className="empty">No accounts match “{query}”.</li>
+          {filtered.length === 0 && !loading && (
+            <li className="empty">No accounts found.</li>
           )}
         </ul>
       </section>
@@ -128,18 +222,17 @@ function DashboardHome({ email, accounts, goTransactions = () => {} }) {
         {selected ? (
           <div className="detail">
             <h3 className="detail-title">
-              {selected.type} •••• {selected.last4}
+              {selected.accountType || "Account"} •••• {selected.accountNumber?.slice(-4) || selected.id}
             </h3>
-            <p className="detail-sub">Nickname: {selected.nickname}</p>
+            <p className="detail-sub">Account Number: {selected.accountNumber || selected.id}</p>
             <div className="detail-stat">
               Current balance
               <div className="detail-balance">
-                ${selected.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ${(selected.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div className="detail-actions">
-              
-              <button className="btn">Transfer funds</button>
+              <button className="btn" onClick={goTransactions}>View Transactions</button>
             </div>
           </div>
         ) : (
@@ -152,86 +245,98 @@ function DashboardHome({ email, accounts, goTransactions = () => {} }) {
 
 /* ------------ TRANSACTIONS PAGE ------------ */
 
-function TransactionsPage({ transactions }) {
-  const [visibleCount, setVisibleCount] = useState(3);
+function TransactionsPage({ transactions, loading, onRefresh }) {
+  const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
-      if (from && t.date < from) return false;
-      if (to && t.date > to) return false;
+      if (!t.transactionTimestamp) return true;
+      const txDate = t.transactionTimestamp.split("T")[0];
+      if (from && txDate < from) return false;
+      if (to && txDate > to) return false;
       return true;
     });
   }, [transactions, from, to]);
 
-  const visible = filtered.slice(0, visibleCount);
+  if (loading) {
+    return (
+      <section className="card full">
+        <div className="card-head">
+          <h1 className="page-title">Transactions</h1>
+        </div>
+        <p>Loading transactions...</p>
+      </section>
+    );
+  }
 
   return (
     <section className="card full">
       <div className="card-head">
         <h1 className="page-title">Transactions</h1>
-        <div className="filter-row">
-          <label>
-            From
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="date-input"
-            />
-          </label>
-          <label>
-            To
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="date-input"
-            />
-          </label>
-        </div>
+        <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
+          Refresh
+        </button>
+      </div>
+      <div className="filter-row" style={{ marginBottom: "1rem" }}>
+        <label>
+          From
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="date-input"
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="date-input"
+          />
+        </label>
       </div>
 
       <div className="tx-list">
-        {visible.map((t) => (
-          <div key={t.id} className="tx-row">
-            <div className="tx-meta">
-              <div className="tx-desc">{t.desc}</div>
-              <div className="tx-date">{t.date}</div>
+        {filtered.map((t) => {
+          const isPositive = t.transactionType === "DEPOSIT" || t.transactionType === "TRANSFER_IN" || t.transactionType === "REFUND";
+          const amount = t.amount || 0;
+          const date = t.transactionTimestamp ? t.transactionTimestamp.split("T")[0] : "N/A";
+          const desc = t.description || t.merchantName || `${t.transactionType} Transaction`;
+          
+          return (
+            <div key={t.id} className="tx-row">
+              <div className="tx-meta">
+                <div className="tx-desc">{desc}</div>
+                <div className="tx-date">{date}</div>
+                {t.fraudStatus === "FLAGGED" && (
+                  <div style={{ color: "red", fontSize: "0.85em", marginTop: "0.25rem" }}>
+                    ⚠️ Flagged for review
+                  </div>
+                )}
+              </div>
+              <div className={`tx-amount ${isPositive ? "tx-positive" : "tx-negative"}`}>
+                {isPositive ? "+" : "-"}${Math.abs(amount).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </div>
             </div>
-            <div
-              className={
-                "tx-amount " + (t.amount >= 0 ? "tx-positive" : "tx-negative")
-              }
-            >
-              {t.amount >= 0 ? "+" : "-"}$
-              {Math.abs(t.amount).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-              })}
-            </div>
-          </div>
-        ))}
-        {visible.length === 0 && (
-          <div className="empty">No transactions for this date range.</div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="empty">No transactions found.</div>
         )}
       </div>
-
-      {visibleCount < filtered.length && (
-        <button
-          className="btn load-more"
-          onClick={() => setVisibleCount((c) => c + 3)}
-        >
-          Load more
-        </button>
-      )}
     </section>
   );
 }
 
 /* ------------ USER SETTINGS PAGE ------------ */
 
-function UserSettingsPage({ email }) {
+function UserSettingsPage({ user }) {
   return (
     <section className="card full">
       <h1 className="page-title">User settings</h1>
@@ -239,23 +344,20 @@ function UserSettingsPage({ email }) {
         <div className="settings-card">
           <h2>Current user information</h2>
           <p>
-            <strong>Username:</strong> saleh123
+            <strong>Username:</strong> {user?.username || "N/A"}
           </p>
           <p>
-            <strong>Email:</strong> {email}
-          </p>
-          <p>
-            <strong>Delivery options:</strong> Email + SMS
+            <strong>Role:</strong> {user?.role || "N/A"}
           </p>
         </div>
 
         <div className="settings-card">
-          <h2>Change your settings</h2>
+          <h2>Account Management</h2>
           <ul className="settings-list">
-            <li>Change delivery options</li>
-            <li>Change email</li>
-            <li>Change username</li>
+            <li>View account details</li>
+            <li>Update profile information</li>
             <li>Change password</li>
+            <li>Security settings</li>
           </ul>
         </div>
       </div>
@@ -265,20 +367,57 @@ function UserSettingsPage({ email }) {
 
 /* ------------ FRAUD ALERTS PAGE ------------ */
 
-function FraudAlertsPage() {
+function FraudAlertsPage({ alerts, loading, onRefresh }) {
+  if (loading) {
+    return (
+      <section className="card full">
+        <h1 className="page-title">Fraud alerts</h1>
+        <p>Loading fraud alerts...</p>
+      </section>
+    );
+  }
+
   return (
     <section className="card full">
-      <h1 className="page-title">Fraud alerts</h1>
-      <div className="alert-card">
-        <div className="alert-icon">!</div>
-        <div>
-          <p className="alert-title">Suspicious activity detected</p>
-          <p className="alert-body">
-            Unusual transaction amount: $500 at “Cozy Cafe” on Oct 7, 2025 at 2:34 PM.
-            Please review this transaction in your account activity.
-          </p>
-        </div>
+      <div className="card-head">
+        <h1 className="page-title">Fraud alerts</h1>
+        <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
+          Refresh
+        </button>
       </div>
+      {alerts.length === 0 ? (
+        <div className="empty">No fraud alerts at this time.</div>
+      ) : (
+        alerts.map((alert) => {
+          const date = alert.transactionTimestamp 
+            ? new Date(alert.transactionTimestamp).toLocaleString() 
+            : "N/A";
+          const amount = alert.amount || 0;
+          const desc = alert.description || alert.merchantName || `${alert.transactionType} Transaction`;
+          
+          return (
+            <div key={alert.id} className="alert-card" style={{ marginBottom: "1rem" }}>
+              <div className="alert-icon">!</div>
+              <div>
+                <p className="alert-title">Suspicious activity detected</p>
+                <p className="alert-body">
+                  Transaction: {desc} - ${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} on {date}
+                </p>
+                {alert.fraudReasons && (
+                  <p className="alert-body" style={{ fontSize: "0.9em", color: "#666" }}>
+                    Reasons: {alert.fraudReasons}
+                  </p>
+                )}
+                {alert.fraudScore && (
+                  <p className="alert-body" style={{ fontSize: "0.9em", color: "#666" }}>
+                    Risk Score: {(alert.fraudScore * 100).toFixed(0)}%
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
     </section>
   );
 }

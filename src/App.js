@@ -1,40 +1,43 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import TwoFactorPage from "./TwoFactorPage";
-import DashboardPage from "./DashboardPage"; // ← add this import
+import DashboardPage from "./DashboardPage";
+import { isAuthenticated, getUser, logout } from "./api";
 
 export default function App() {
-  const [stage, setStage] = useState("login"); // "login" | "2fa" | "dashboard"
-  const [email, setEmail] = useState("");
+  const [stage, setStage] = useState("login"); // "login" | "dashboard"
+  const [user, setUser] = useState(null);
+
+  // Check if user is already logged in on mount
+  useEffect(() => {
+    if (isAuthenticated()) {
+      const userInfo = getUser();
+      if (userInfo) {
+        setUser(userInfo);
+        setStage("dashboard");
+      }
+    }
+  }, []);
 
   if (stage === "login") {
     return (
       <LoginPage
-        onSuccess={(em) => {
-          setEmail(em);
-          setStage("2fa");
+        onSuccess={(username) => {
+          const userInfo = getUser();
+          setUser(userInfo || { username });
+          setStage("dashboard");
         }}
       />
     );
   }
 
-  if (stage === "2fa") {
-    return (
-      <TwoFactorPage
-        email={email}
-        onCancel={() => setStage("login")}
-        onVerified={() => setStage("dashboard")} // ← move to dashboard after 2FA
-      />
-    );
-  }
-
-  // Once 2FA is complete
+  // Dashboard
   return (
     <DashboardPage
-      email={email}
+      user={user}
       onLogout={() => {
-        setEmail("");
-        setStage("login"); // ← goes back to login
+        logout();
+        setUser(null);
+        setStage("login");
       }}
     />
   );

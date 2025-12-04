@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import "./LoginPage.css";
 import logo from "./logo.svg";
+import { login } from "./api";
 
 export default function LoginPage({ onSuccess }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
@@ -11,49 +12,27 @@ export default function LoginPage({ onSuccess }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  function base64UrlEncode(bytes) {
-    let binary = "";
-    bytes.forEach((b) => (binary += String.fromCharCode(b)));
-    const b64 = btoa(binary);
-    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  }
-
-  function generateToken() {
-    const bytes = new Uint8Array(32); // 256-bit
-    crypto.getRandomValues(bytes);
-    return base64UrlEncode(bytes);
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setMessage("");
 
-    if (!email || !password) {
+    if (!username || !password) {
       setError("Please fill in both fields.");
       return;
     }
 
     setLoading(true);
     try {
-      const token = generateToken();
-      localStorage.setItem("sb_token", token);
-
-      // Simulate backend login success (no real API needed)
-      await new Promise((resolve) => setTimeout(resolve, 500)); // fake 0.5s delay
-
-        setMessage("Logged in successfully! (Demo mode)");
-      if (typeof onSuccess === "function") onSuccess(email);
-
-
-    //   if (!res.ok) {
-    //     const text = await res.text();
-    //     throw new Error(text || "Login failed");
-    //   }
-
-      setMessage("Logged in! Token sent to backend.");
+      // Call real backend API using utility function
+      const response = await login(username, password);
+      
+      setMessage("Logged in successfully!");
+      if (typeof onSuccess === "function") onSuccess(response.username || username);
     } catch (err) {
-      setError(err.message || "Something went wrong");
+      // Handle error from backend (now with consistent error format)
+      const errorMessage = err.message || "Invalid username or password";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -70,16 +49,16 @@ return (
       <h2 className="login-subtitle">SecureBank</h2>
 
       <form onSubmit={handleSubmit} className="login-form">
-        {/* Email */}
+        {/* Username */}
         <div className="field">
-          <label className="label">Email</label>
+          <label className="label">Username</label>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             className="input"
-            placeholder="you@example.com"
-            autoComplete="email"
+            placeholder="yourusername"
+            autoComplete="username"
           />
         </div>
 
@@ -130,7 +109,7 @@ return (
       </form>
 
       <p className="note">
-        This minimal demo generates a random 256-bit token in the browser and includes it in the login POST body.
+        Secure login with JWT authentication. Connect to backend at {process.env.REACT_APP_API_URL || "http://localhost:8080"}
       </p>
     </div>
   </div>
