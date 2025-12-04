@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import "./DashboardPage.css";
-import { getAccounts, getTransactions, getFraudAlerts, createTransaction } from "./api";
+import { getAccounts, getTransactions, getFraudAlerts, createTransaction, createAccount } from "./api";
 
 export default function DashboardPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "transactions" | "fraud" | "settings"
@@ -172,6 +172,7 @@ export default function DashboardPage({ user, onLogout }) {
 function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {}, onCreateTransaction, userRole }) {
   const [selectedId, setSelectedId] = useState(accounts[0]?.id);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showCreateAccountForm, setShowCreateAccountForm] = useState(false);
 
   const filtered = useMemo(() => {
     return accounts;
@@ -200,10 +201,35 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             <h1 className="page-title">Dashboard</h1>
             <p className="page-subtitle">Signed in as {username}</p>
           </div>
-          <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
-            Refresh
-          </button>
+          <div style={{ display: "flex", gap: "10px", marginLeft: "auto" }}>
+            <button className="btn btn-secondary" onClick={() => setShowCreateAccountForm(!showCreateAccountForm)}>
+              {showCreateAccountForm ? "Cancel" : "New Account"}
+            </button>
+            <button className="btn" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {showCreateAccountForm && (
+          <CreateAccountForm
+            onSuccess={async (result) => {
+              if (result.success) {
+                setShowCreateAccountForm(false);
+                await onRefresh(); // Refresh accounts list
+              }
+              return result;
+            }}
+            onCreateAccount={async (accountData) => {
+              try {
+                await createAccount(accountData);
+                return { success: true };
+              } catch (err) {
+                return { success: false, error: err.message };
+              }
+            }}
+          />
+        )}
 
         <ul className="acct-list">
           {filtered.map((a) => (
@@ -678,6 +704,118 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
 
         <div style={{ marginTop: "0.75rem", fontSize: "12px", color: "#6b7280" }}>
           Account: {accountNumber} | Current Balance: ${(currentBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ------------ CREATE ACCOUNT FORM ------------ */
+
+function CreateAccountForm({ onSuccess, onCreateAccount }) {
+  const [accountType, setAccountType] = useState("CHECKING");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    // Generate account number if not provided
+    let finalAccountNumber = accountNumber.trim();
+    if (!finalAccountNumber) {
+      // Generate a simple account number: type prefix + random 4 digits
+      const prefix = accountType === "CHECKING" ? "c" : accountType === "SAVINGS" ? "s" : "b";
+      const random = Math.floor(1000 + Math.random() * 9000);
+      finalAccountNumber = `${prefix}${random}`;
+    }
+
+    try {
+      const accountData = {
+        accountType: accountType,
+        accountNumber: finalAccountNumber,
+        balance: 0,
+        isActive: true,
+      };
+
+      const result = await onCreateAccount(accountData);
+      
+      if (result.success) {
+        setSuccess(`Account ${finalAccountNumber} created successfully!`);
+        // Reset form
+        setAccountType("CHECKING");
+        setAccountNumber("");
+        // Clear success message and call onSuccess
+        setTimeout(async () => {
+          setSuccess("");
+          await onSuccess(result);
+        }, 2000);
+      } else {
+        setError(result.error || "Failed to create account");
+      }
+    } catch (err) {
+      setError(err.message || "An error occurred while creating the account");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="transaction-form" style={{ marginTop: "1rem" }}>
+      <h4 style={{ marginTop: "0", marginBottom: "1rem", fontSize: "16px", fontWeight: "600" }}>
+        Create New Account
+      </h4>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">Account Type</label>
+          <select
+            className="form-input"
+            value={accountType}
+            onChange={(e) => setAccountType(e.target.value)}
+            required
+          >
+            <option value="CHECKING">Checking</option>
+            <option value="SAVINGS">Savings</option>
+            <option value="BUSINESS">Business</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Account Number (Optional)</label>
+          <input
+            type="text"
+            className="form-input"
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.target.value)}
+            placeholder="Leave blank to auto-generate"
+            maxLength={20}
+            pattern="[a-zA-Z0-9]+"
+          />
+          <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+            Leave blank to auto-generate (e.g., c1234 for checking)
+          </p>
+        </div>
+
+        {error && (
+          <div className="alert alert-error" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="alert alert-success" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+            {success}
+          </div>
+        )}
+
+        <div className="form-actions">
+          <button type="submit" className="btn" disabled={loading}>
+            {loading ? "Creating..." : "Create Account"}
+          </button>
         </div>
       </form>
     </div>

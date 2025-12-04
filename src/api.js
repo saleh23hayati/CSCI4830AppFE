@@ -185,3 +185,13 @@ export async function createTransaction(transactionData) {
   });
 }
 
+/**
+ * Create a new account for the current user
+ */
+export async function createAccount(accountData) {
+  return apiRequest("/accounts", {
+    method: "POST",
+    body: JSON.stringify(accountData),
+  });
+}
+
