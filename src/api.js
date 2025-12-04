@@ -1,6 +1,8 @@
 // API utility functions for making authenticated requests
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8080/api";
+// Use environment variable if set, otherwise use relative URL (same origin)
+// This works when frontend is served from the backend
+const API_BASE_URL = process.env.REACT_APP_API_URL || "/api";
 
 /**
  * Get the stored JWT token
