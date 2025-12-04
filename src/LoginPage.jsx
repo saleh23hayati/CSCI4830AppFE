@@ -103,8 +103,24 @@ return (
         {message && <div className="alert alert-success" role="status">{message}</div>}
 
         {/* Submit */}
-        <button type="submit" disabled={loading} className="btn">
-          {loading ? "Signing in…" : "Sign in"}
+        <button 
+          type="submit" 
+          disabled={loading} 
+          className="btn"
+          style={{ 
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? "not-allowed" : "pointer",
+            position: "relative"
+          }}
+        >
+          {loading ? (
+            <>
+              <span style={{ marginRight: "8px" }}>⏳</span>
+              Signing in…
+            </>
+          ) : (
+            "Sign in"
+          )}
         </button>
       </form>
 

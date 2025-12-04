@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
 import DashboardPage from "./DashboardPage";
-import { isAuthenticated, getUser, logout } from "./api";
+import { isAuthenticated, getUser, logout, refreshToken, getRefreshToken } from "./api";
 
 export default function App() {
   const [stage, setStage] = useState("login"); // "login" | "dashboard"
@@ -17,6 +17,28 @@ export default function App() {
       }
     }
   }, []);
+
+  // Auto-refresh token before expiration (every 14 minutes, token expires in 15)
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+
+    const refreshInterval = setInterval(async () => {
+      try {
+        if (getRefreshToken()) {
+          await refreshToken();
+          console.log("Token refreshed successfully");
+        }
+      } catch (error) {
+        console.error("Token refresh failed:", error);
+        // If refresh fails, logout user
+        logout();
+        setUser(null);
+        setStage("login");
+      }
+    }, 14 * 60 * 1000); // Refresh every 14 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [stage]);
 
   if (stage === "login") {
     return (

@@ -12,6 +12,25 @@ export function getToken() {
 }
 
 /**
+ * Get the stored refresh token
+ */
+export function getRefreshToken() {
+  return localStorage.getItem("refresh_token");
+}
+
+/**
+ * Store tokens
+ */
+function storeTokens(accessToken, refreshToken) {
+  if (accessToken) {
+    localStorage.setItem("jwt_token", accessToken);
+  }
+  if (refreshToken) {
+    localStorage.setItem("refresh_token", refreshToken);
+  }
+}
+
+/**
  * Get stored user info
  */
 export function getUser() {
@@ -19,8 +38,62 @@ export function getUser() {
   return userStr ? JSON.parse(userStr) : null;
 }
 
+// Track if we're currently refreshing to avoid multiple refresh attempts
+let isRefreshing = false;
+let refreshPromise = null;
+
 /**
- * Make an authenticated API request
+ * Format error messages to be more user-friendly
+ */
+function formatErrorMessage(message, statusCode) {
+  // Handle insufficient funds errors
+  if (message.includes("Insufficient funds")) {
+    const match = message.match(/Current balance: \$?([\d,]+\.?\d*), Required: \$?([\d,]+\.?\d*)/);
+    if (match) {
+      const currentBalance = parseFloat(match[1].replace(/,/g, ''));
+      const required = parseFloat(match[2].replace(/,/g, ''));
+      const shortfall = (required - currentBalance).toFixed(2);
+      return `You don't have enough funds for this transaction. Your current balance is $${currentBalance.toFixed(2)}, but you need $${required.toFixed(2)}. You're short by $${shortfall}.`;
+    }
+    return "You don't have enough funds in your account for this transaction. Please check your balance and try again.";
+  }
+  
+  // Handle validation errors
+  if (message.includes("validation") || message.includes("Validation")) {
+    return message.replace(/validation/i, "Please check your input").replace(/Validation/i, "Please check your input");
+  }
+  
+  // Handle account not found
+  if (message.includes("Account not found") || message.includes("account") && message.includes("not found")) {
+    return "The account you're trying to use doesn't exist. Please refresh the page and try again.";
+  }
+  
+  // Handle unauthorized errors
+  if (statusCode === 401 || message.includes("Unauthorized") || message.includes("expired")) {
+    return "Your session has expired. Please login again.";
+  }
+  
+  // Handle forbidden errors
+  if (statusCode === 403 || message.includes("Forbidden")) {
+    return "You don't have permission to perform this action.";
+  }
+  
+  // Handle not found errors
+  if (statusCode === 404) {
+    return "The resource you're looking for doesn't exist.";
+  }
+  
+  // Handle server errors
+  if (statusCode >= 500) {
+    return "Something went wrong on our end. Please try again in a moment. If the problem persists, contact support.";
+  }
+  
+  // Return original message if no specific formatting needed
+  return message;
+}
+
+/**
+ * Make an authenticated API request with automatic token refresh
  */
 export async function apiRequest(endpoint, options = {}) {
   const token = getToken();
@@ -34,10 +107,42 @@ export async function apiRequest(endpoint, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  let response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
   });
+  
+  // If we get a 401, try to refresh the token and retry once
+  if (response.status === 401 && token && !endpoint.includes("/auth/")) {
+    // Only attempt refresh once
+    if (!isRefreshing) {
+      isRefreshing = true;
+      refreshPromise = refreshToken().catch(() => {
+        // Refresh failed, logout user
+        logout();
+        throw new Error("Your session has expired. Please login again.");
+      }).finally(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+      });
+    }
+    
+    // Wait for refresh to complete
+    await refreshPromise;
+    
+    // Retry the original request with new token
+    const newToken = getToken();
+    if (newToken) {
+      headers.Authorization = `Bearer ${newToken}`;
+      response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } else {
+      logout();
+      throw new Error("Your session has expired. Please login again.");
+    }
+  }
   
   if (!response.ok) {
     // Handle error response from backend (now with consistent format)
@@ -47,7 +152,11 @@ export async function apiRequest(endpoint, options = {}) {
     }));
     
     // Use message field if available (from ErrorResponse DTO), otherwise error field
-    const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+    let errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+    
+    // Make error messages more user-friendly
+    errorMessage = formatErrorMessage(errorMessage, response.status);
+    
     throw new Error(errorMessage);
   }
   
@@ -75,9 +184,9 @@ export async function login(username, password) {
   
   const data = await response.json();
   
-  // Store token and user info
+  // Store tokens and user info
   if (data.token) {
-    localStorage.setItem("jwt_token", data.token);
+    storeTokens(data.token, data.refreshToken);
     localStorage.setItem("user_info", JSON.stringify({
       username: data.username,
       role: data.role
@@ -115,9 +224,9 @@ export async function register(userData) {
   
   const data = await response.json();
   
-  // Store token and user info
+  // Store tokens and user info
   if (data.token) {
-    localStorage.setItem("jwt_token", data.token);
+    storeTokens(data.token, data.refreshToken);
     localStorage.setItem("user_info", JSON.stringify({
       username: data.username,
       role: data.role
@@ -128,10 +237,45 @@ export async function register(userData) {
 }
 
 /**
+ * Refresh access token using refresh token
+ */
+export async function refreshToken() {
+  const refreshTokenValue = getRefreshToken();
+  
+  if (!refreshTokenValue) {
+    throw new Error("No refresh token available");
+  }
+  
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refreshToken: refreshTokenValue }),
+  });
+  
+  if (!response.ok) {
+    // Refresh token is invalid, clear everything
+    logout();
+    throw new Error("Session expired. Please login again.");
+  }
+  
+  const data = await response.json();
+  
+  // Store new tokens
+  if (data.token) {
+    storeTokens(data.token, data.refreshToken);
+  }
+  
+  return data;
+}
+
+/**
  * Logout user
  */
 export function logout() {
   localStorage.removeItem("jwt_token");
+  localStorage.removeItem("refresh_token");
   localStorage.removeItem("user_info");
 }
 

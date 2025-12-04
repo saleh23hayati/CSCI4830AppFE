@@ -38,7 +38,13 @@ export default function DashboardPage({ user, onLogout }) {
       const data = await getAccounts();
       setAccounts(data || []);
     } catch (err) {
-      setError(err.message || "Failed to load accounts");
+      let errorMsg = err.message || "Failed to load accounts";
+      if (errorMsg.includes("expired") || errorMsg.includes("Unauthorized")) {
+        errorMsg = "Your session has expired. Please refresh the page and login again.";
+      } else if (errorMsg.includes("Forbidden")) {
+        errorMsg = "You don't have permission to view accounts.";
+      }
+      setError(errorMsg);
       console.error("Error loading accounts:", err);
     } finally {
       setLoading(false);
@@ -57,7 +63,13 @@ export default function DashboardPage({ user, onLogout }) {
         setTransactions(data || []);
       }
     } catch (err) {
-      setError(err.message || "Failed to load transactions");
+      let errorMsg = err.message || "Failed to load transactions";
+      if (errorMsg.includes("expired") || errorMsg.includes("Unauthorized")) {
+        errorMsg = "Your session has expired. Please refresh the page and login again.";
+      } else if (errorMsg.includes("Forbidden")) {
+        errorMsg = "You don't have permission to view transactions.";
+      }
+      setError(errorMsg);
       console.error("Error loading transactions:", err);
     } finally {
       setLoading(false);
@@ -71,7 +83,13 @@ export default function DashboardPage({ user, onLogout }) {
       const data = await getFraudAlerts();
       setFraudAlerts(data || []);
     } catch (err) {
-      setError(err.message || "Failed to load fraud alerts");
+      let errorMsg = err.message || "Failed to load fraud alerts";
+      if (errorMsg.includes("expired") || errorMsg.includes("Unauthorized")) {
+        errorMsg = "Your session has expired. Please refresh the page and login again.";
+      } else if (errorMsg.includes("Forbidden")) {
+        errorMsg = "You don't have permission to view fraud alerts.";
+      }
+      setError(errorMsg);
       console.error("Error loading fraud alerts:", err);
     } finally {
       setLoading(false);
@@ -205,8 +223,16 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             <button className="btn btn-secondary" onClick={() => setShowCreateAccountForm(!showCreateAccountForm)}>
               {showCreateAccountForm ? "Cancel" : "New Account"}
             </button>
-            <button className="btn" onClick={onRefresh}>
-              Refresh
+            <button 
+              className="btn" 
+              onClick={onRefresh}
+              disabled={loading}
+              style={{ 
+                opacity: loading ? 0.6 : 1,
+                cursor: loading ? "not-allowed" : "pointer"
+              }}
+            >
+              {loading ? "⏳ Refreshing..." : "Refresh"}
             </button>
           </div>
         </div>
@@ -329,8 +355,17 @@ function TransactionsPage({ transactions, loading, onRefresh }) {
     <section className="card full">
       <div className="card-head">
         <h1 className="page-title">Transactions</h1>
-        <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
-          Refresh
+        <button 
+          className="btn" 
+          onClick={onRefresh} 
+          disabled={loading}
+          style={{ 
+            marginLeft: "auto",
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? "not-allowed" : "pointer"
+          }}
+        >
+          {loading ? "⏳ Refreshing..." : "Refresh"}
         </button>
       </div>
       <div className="filter-row" style={{ marginBottom: "1rem" }}>
@@ -435,8 +470,17 @@ function FraudAlertsPage({ alerts, loading, onRefresh }) {
     <section className="card full">
       <div className="card-head">
         <h1 className="page-title">Fraud alerts</h1>
-        <button className="btn" onClick={onRefresh} style={{ marginLeft: "auto" }}>
-          Refresh
+        <button 
+          className="btn" 
+          onClick={onRefresh} 
+          disabled={loading}
+          style={{ 
+            marginLeft: "auto",
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? "not-allowed" : "pointer"
+          }}
+        >
+          {loading ? "⏳ Refreshing..." : "Refresh"}
         </button>
       </div>
       {alerts.length === 0 ? (
@@ -557,7 +601,13 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
       const transferOutResult = await onCreateTransaction(transferOutData);
       
       if (!transferOutResult.success) {
-        setError(transferOutResult.error || "Failed to initiate transfer");
+        // Format error message to be more user-friendly
+        let errorMsg = transferOutResult.error || "Failed to initiate transfer";
+        if (errorMsg.includes("Insufficient funds")) {
+          const sourceBalance = sourceAccount?.balance || 0;
+          errorMsg = `You don't have enough funds in ${sourceAccountNumber}. Your balance is $${sourceBalance.toFixed(2)}, but you're trying to transfer $${amountNum.toFixed(2)}. Please reduce the amount or add funds to your account.`;
+        }
+        setError(errorMsg);
         setLoading(false);
         return;
       }
@@ -594,7 +644,17 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
         await onSuccess(result);
       }, 2000);
     } catch (err) {
-      setError(err.message || "An error occurred while creating the transaction");
+      // Format error message to be more user-friendly
+      let errorMsg = err.message || "An error occurred while creating the transaction";
+      if (errorMsg.includes("Insufficient funds")) {
+        const sourceBalance = sourceAccount?.balance || 0;
+        errorMsg = `You don't have enough funds. Your balance is $${sourceBalance.toFixed(2)}, but you're trying to transfer $${amountNum.toFixed(2)}. Please reduce the amount.`;
+      } else if (errorMsg.includes("Account not found")) {
+        errorMsg = "One of the accounts doesn't exist. Please refresh the page and try again.";
+      } else if (errorMsg.includes("expired") || errorMsg.includes("Unauthorized")) {
+        errorMsg = "Your session has expired. Please refresh the page and login again.";
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -772,10 +832,24 @@ function CreateAccountForm({ onSuccess, onCreateAccount }) {
           await onSuccess(result);
         }, 2000);
       } else {
-        setError(result.error || "Failed to create account");
+        let errorMsg = result.error || "Failed to create account";
+        if (errorMsg.includes("already exists") || errorMsg.includes("duplicate")) {
+          errorMsg = "An account with this number already exists. Please use a different account number or leave it blank to auto-generate.";
+        } else if (errorMsg.includes("validation") || errorMsg.includes("Validation")) {
+          errorMsg = "Please check your input. Account number must be 6-20 uppercase letters and numbers.";
+        }
+        setError(errorMsg);
       }
     } catch (err) {
-      setError(err.message || "An error occurred while creating the account");
+      let errorMsg = err.message || "An error occurred while creating the account";
+      if (errorMsg.includes("already exists") || errorMsg.includes("duplicate")) {
+        errorMsg = "An account with this number already exists. Please use a different account number.";
+      } else if (errorMsg.includes("validation") || errorMsg.includes("Validation")) {
+        errorMsg = "Please check your input. Account number must be 6-20 uppercase letters and numbers.";
+      } else if (errorMsg.includes("expired") || errorMsg.includes("Unauthorized")) {
+        errorMsg = "Your session has expired. Please refresh the page and login again.";
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -831,8 +905,24 @@ function CreateAccountForm({ onSuccess, onCreateAccount }) {
         )}
 
         <div className="form-actions">
-          <button type="submit" className="btn" disabled={loading}>
-            {loading ? "Creating..." : "Create Account"}
+          <button 
+            type="submit" 
+            className="btn" 
+            disabled={loading}
+            style={{ 
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+              position: "relative"
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{ marginRight: "8px" }}>⏳</span>
+                Creating Account...
+              </>
+            ) : (
+              "Create Account"
+            )}
           </button>
         </div>
       </form>
