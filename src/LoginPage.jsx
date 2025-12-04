@@ -95,7 +95,7 @@ return (
             />
             <span>Remember me</span>
           </label>
-          <a className="forgot" href="#">Forgot username or password?</a>
+          <button type="button" className="forgot" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", color: "inherit" }}>Forgot username or password?</button>
         </div>
 
         {/* Alerts */}

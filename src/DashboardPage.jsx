@@ -130,6 +130,7 @@ export default function DashboardPage({ user, onLogout }) {
             loading={loading}
             onRefresh={loadAccounts}
             goTransactions={() => setActiveTab("transactions")}
+            userRole={user?.role}
             onCreateTransaction={async (transactionData) => {
               try {
                 await createTransaction(transactionData);
@@ -168,20 +169,13 @@ export default function DashboardPage({ user, onLogout }) {
 
 /* ------------ DASHBOARD HOME (ACCOUNTS) ------------ */
 
-function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {}, onCreateTransaction }) {
-  const [query, setQuery] = useState("");
+function DashboardHome({ username, accounts, loading, onRefresh, goTransactions = () => {}, onCreateTransaction, userRole }) {
   const [selectedId, setSelectedId] = useState(accounts[0]?.id);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    if (!q) return accounts;
-    return accounts.filter(
-      (a) =>
-        a.accountType?.toLowerCase().includes(q) ||
-        a.accountNumber?.includes(q)
-    );
-  }, [query, accounts]);
+    return accounts;
+  }, [accounts]);
 
   const selected = accounts.find((a) => a.id === selectedId) || filtered[0];
 
@@ -257,6 +251,8 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
                 accountId={selected.id}
                 accountNumber={selected.accountNumber}
                 currentBalance={selected.balance}
+                accounts={accounts}
+                userRole={userRole}
                 onSuccess={async (result) => {
                   if (result.success) {
                     setShowTransactionForm(false);
@@ -279,7 +275,6 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
 /* ------------ TRANSACTIONS PAGE ------------ */
 
 function TransactionsPage({ transactions, loading, onRefresh }) {
-  const [page, setPage] = useState(0);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -457,13 +452,22 @@ function FraudAlertsPage({ alerts, loading, onRefresh }) {
 
 /* ------------ TRANSACTION FORM ------------ */
 
-function TransactionForm({ accountId, accountNumber, currentBalance, onSuccess, onCreateTransaction }) {
-  const [transactionType, setTransactionType] = useState("DEPOSIT");
+function TransactionForm({ accountId, accountNumber, currentBalance, accounts, userRole, onSuccess, onCreateTransaction }) {
+  // Regular users can only transfer; admins can do all transaction types
+  const isCustomer = userRole === "CUSTOMER";
+  const defaultType = isCustomer ? "TRANSFER_OUT" : "DEPOSIT";
+  
+  const [transactionType, setTransactionType] = useState(defaultType);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [destinationAccountId, setDestinationAccountId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Get available destination accounts (exclude current account)
+  const availableAccounts = accounts.filter(acc => acc.id !== accountId);
+  const showDestinationAccount = (transactionType === "TRANSFER_OUT" || transactionType === "TRANSFER_IN") && availableAccounts.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -479,21 +483,61 @@ function TransactionForm({ accountId, accountNumber, currentBalance, onSuccess, 
       return;
     }
 
+    // Validate destination account for transfers
+    if (showDestinationAccount && !destinationAccountId) {
+      setError("Please select a destination account for the transfer");
+      setLoading(false);
+      return;
+    }
+
     try {
+      // For TRANSFER_OUT, create transaction on source account
+      // For TRANSFER_IN, create transaction on destination account
+      let targetAccountId = accountId;
+      if (transactionType === "TRANSFER_IN" && destinationAccountId) {
+        targetAccountId = parseInt(destinationAccountId);
+      }
+
       const transactionData = {
-        account: { id: accountId },
+        account: { id: targetAccountId },
         transactionType: transactionType,
         amount: amountNum,
         description: description || undefined,
       };
 
+      // If TRANSFER_OUT, we should also create TRANSFER_IN on destination account
+      // For now, we'll just create the TRANSFER_OUT and note that the backend
+      // should handle creating the corresponding TRANSFER_IN
+      // TODO: Backend should handle creating both transactions for transfers
+      
       const result = await onCreateTransaction(transactionData);
       
       if (result.success) {
-        setSuccess(`Transaction ${transactionType.toLowerCase()} of $${amountNum.toFixed(2)} completed successfully!`);
+        // If TRANSFER_OUT, create corresponding TRANSFER_IN
+        if (transactionType === "TRANSFER_OUT" && destinationAccountId) {
+          try {
+            const transferInData = {
+              account: { id: parseInt(destinationAccountId) },
+              transactionType: "TRANSFER_IN",
+              amount: amountNum,
+              description: description || `Transfer from ${accountNumber}`,
+            };
+            await onCreateTransaction(transferInData);
+          } catch (transferErr) {
+            console.error("Failed to create corresponding TRANSFER_IN:", transferErr);
+            // Don't fail the whole operation, but log the error
+          }
+        }
+
+        const successMsg = transactionType === "TRANSFER_OUT" 
+          ? `Transfer of $${amountNum.toFixed(2)} completed successfully!`
+          : `Transaction ${transactionType.toLowerCase()} of $${amountNum.toFixed(2)} completed successfully!`;
+        
+        setSuccess(successMsg);
         // Reset form
         setAmount("");
         setDescription("");
+        setDestinationAccountId("");
         // Clear success message after 3 seconds and call onSuccess
         setTimeout(async () => {
           setSuccess("");
@@ -520,16 +564,58 @@ function TransactionForm({ accountId, accountNumber, currentBalance, onSuccess, 
           <select
             className="form-input"
             value={transactionType}
-            onChange={(e) => setTransactionType(e.target.value)}
+            onChange={(e) => {
+              setTransactionType(e.target.value);
+              // Reset destination account when changing type
+              setDestinationAccountId("");
+            }}
             required
           >
-            <option value="DEPOSIT">Deposit</option>
-            <option value="WITHDRAWAL">Withdrawal</option>
-            <option value="PURCHASE">Purchase</option>
-            <option value="TRANSFER_IN">Transfer In</option>
+            {!isCustomer && (
+              <>
+                <option value="DEPOSIT">Deposit</option>
+                <option value="WITHDRAWAL">Withdrawal</option>
+                <option value="PURCHASE">Purchase</option>
+              </>
+            )}
             <option value="TRANSFER_OUT">Transfer Out</option>
+            {availableAccounts.length > 0 && (
+              <option value="TRANSFER_IN">Transfer In</option>
+            )}
           </select>
+          {isCustomer && (
+            <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+              Regular users can only transfer between accounts
+            </p>
+          )}
         </div>
+
+        {showDestinationAccount && (
+          <div className="form-group">
+            <label className="form-label">
+              {transactionType === "TRANSFER_OUT" ? "Transfer To Account" : "Transfer From Account"}
+            </label>
+            <select
+              className="form-input"
+              value={destinationAccountId}
+              onChange={(e) => setDestinationAccountId(e.target.value)}
+              required
+            >
+              <option value="">Select account...</option>
+              {availableAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.accountType || "Account"} •••• {acc.accountNumber?.slice(-4) || acc.id} 
+                  {acc.balance !== undefined && ` (Balance: $${acc.balance.toFixed(2)})`}
+                </option>
+              ))}
+            </select>
+            {availableAccounts.length === 0 && (
+              <p style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+                You need at least one other account to make transfers
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="form-group">
           <label className="form-label">Amount ($)</label>
