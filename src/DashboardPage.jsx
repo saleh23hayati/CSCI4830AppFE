@@ -525,61 +525,64 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
     }
 
     try {
-      // For TRANSFER_OUT, create transaction on source account
-      // For TRANSFER_IN, create transaction on destination account
-      let targetAccountId = accountId;
-      if (transactionType === "TRANSFER_IN" && destinationAccountId) {
-        targetAccountId = parseInt(destinationAccountId);
-      }
-
-      const transactionData = {
-        account: { id: targetAccountId },
-        transactionType: transactionType,
+      // For transfers, we need to create both TRANSFER_OUT (on source) and TRANSFER_IN (on destination)
+      // TRANSFER_OUT: source = current account, destination = selected account
+      // TRANSFER_IN: source = current account, destination = selected account (same logic, just different perspective)
+      
+      const sourceAccountId = accountId;
+      const destinationAccountIdNum = parseInt(destinationAccountId);
+      
+      // Get destination account number for description
+      const destinationAccount = accounts.find(acc => acc.id === destinationAccountIdNum);
+      const destinationAccountNumber = destinationAccount?.accountNumber || destinationAccountIdNum.toString();
+      
+      // Always create TRANSFER_OUT on source account first (this checks for sufficient funds)
+      const transferOutData = {
+        account: { id: sourceAccountId },
+        transactionType: "TRANSFER_OUT",
         amount: amountNum,
-        description: description || undefined,
+        description: description || `Transfer to ${destinationAccountNumber}`,
       };
-
-      // If TRANSFER_OUT, we should also create TRANSFER_IN on destination account
-      // For now, we'll just create the TRANSFER_OUT and note that the backend
-      // should handle creating the corresponding TRANSFER_IN
-      // TODO: Backend should handle creating both transactions for transfers
       
-      const result = await onCreateTransaction(transactionData);
+      const transferOutResult = await onCreateTransaction(transferOutData);
       
-      if (result.success) {
-        // If TRANSFER_OUT, create corresponding TRANSFER_IN
-        if (transactionType === "TRANSFER_OUT" && destinationAccountId) {
-          try {
-            const transferInData = {
-              account: { id: parseInt(destinationAccountId) },
-              transactionType: "TRANSFER_IN",
-              amount: amountNum,
-              description: description || `Transfer from ${accountNumber}`,
-            };
-            await onCreateTransaction(transferInData);
-          } catch (transferErr) {
-            console.error("Failed to create corresponding TRANSFER_IN:", transferErr);
-            // Don't fail the whole operation, but log the error
-          }
-        }
-
-        const successMsg = transactionType === "TRANSFER_OUT" 
-          ? `Transfer of $${amountNum.toFixed(2)} completed successfully!`
-          : `Transaction ${transactionType.toLowerCase()} of $${amountNum.toFixed(2)} completed successfully!`;
-        
-        setSuccess(successMsg);
-        // Reset form
-        setAmount("");
-        setDescription("");
-        setDestinationAccountId("");
-        // Clear success message after 3 seconds and call onSuccess
-        setTimeout(async () => {
-          setSuccess("");
-          await onSuccess(result);
-        }, 2000);
-      } else {
-        setError(result.error || "Failed to create transaction");
+      if (!transferOutResult.success) {
+        setError(transferOutResult.error || "Failed to initiate transfer");
+        setLoading(false);
+        return;
       }
+      
+      // If TRANSFER_OUT succeeds, create corresponding TRANSFER_IN on destination account
+      try {
+        const transferInData = {
+          account: { id: destinationAccountIdNum },
+          transactionType: "TRANSFER_IN",
+          amount: amountNum,
+          description: description || `Transfer from ${accountNumber}`,
+        };
+        await onCreateTransaction(transferInData);
+      } catch (transferErr) {
+        console.error("Failed to create corresponding TRANSFER_IN:", transferErr);
+        setError("Transfer initiated but failed to complete. Please contact support.");
+        setLoading(false);
+        return;
+      }
+      
+      // Both transactions succeeded
+      const result = { success: true };
+      
+      const successMsg = `Transfer of $${amountNum.toFixed(2)} completed successfully!`;
+      
+      setSuccess(successMsg);
+      // Reset form
+      setAmount("");
+      setDescription("");
+      setDestinationAccountId("");
+      // Clear success message after 3 seconds and call onSuccess
+      setTimeout(async () => {
+        setSuccess("");
+        await onSuccess(result);
+      }, 2000);
     } catch (err) {
       setError(err.message || "An error occurred while creating the transaction");
     } finally {
