@@ -728,10 +728,14 @@ function CreateAccountForm({ onSuccess, onCreateAccount }) {
     // Generate account number if not provided
     let finalAccountNumber = accountNumber.trim();
     if (!finalAccountNumber) {
-      // Generate a simple account number: type prefix + random 4 digits
-      const prefix = accountType === "CHECKING" ? "c" : accountType === "SAVINGS" ? "s" : "b";
-      const random = Math.floor(1000 + Math.random() * 9000);
+      // Generate account number: uppercase type prefix + random 6 digits (must be 6-20 chars, uppercase A-Z0-9)
+      const prefix = accountType === "CHECKING" ? "C" : accountType === "SAVINGS" ? "S" : "B";
+      // Generate 6 random digits to meet minimum length requirement (6 chars total)
+      const random = Math.floor(100000 + Math.random() * 900000);
       finalAccountNumber = `${prefix}${random}`;
+    } else {
+      // Convert to uppercase to match validation pattern
+      finalAccountNumber = finalAccountNumber.toUpperCase();
     }
 
     try {
@@ -793,10 +797,11 @@ function CreateAccountForm({ onSuccess, onCreateAccount }) {
             onChange={(e) => setAccountNumber(e.target.value)}
             placeholder="Leave blank to auto-generate"
             maxLength={20}
-            pattern="[a-zA-Z0-9]+"
+            pattern="[A-Z0-9]{6,20}"
+            style={{ textTransform: "uppercase" }}
           />
           <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-            Leave blank to auto-generate (e.g., c1234 for checking)
+            Leave blank to auto-generate (e.g., C123456 for checking). Must be 6-20 uppercase letters/numbers.
           </p>
         </div>
 
