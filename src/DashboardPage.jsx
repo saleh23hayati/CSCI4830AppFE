@@ -467,13 +467,21 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
 
   // Get available destination accounts (exclude current account)
   const availableAccounts = accounts.filter(acc => acc.id !== accountId);
-  const showDestinationAccount = (transactionType === "TRANSFER_OUT" || transactionType === "TRANSFER_IN") && availableAccounts.length > 0;
+  const isTransfer = transactionType === "TRANSFER_OUT" || transactionType === "TRANSFER_IN";
+  const canTransfer = availableAccounts.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
     setLoading(true);
+
+    // Validate that user has multiple accounts for transfers
+    if (isTransfer && !canTransfer) {
+      setError("You need at least one other account to make transfers. Please contact support to open another account.");
+      setLoading(false);
+      return;
+    }
 
     // Validate amount
     const amountNum = parseFloat(amount);
@@ -483,8 +491,8 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
       return;
     }
 
-    // Validate destination account for transfers
-    if (showDestinationAccount && !destinationAccountId) {
+    // Validate destination account for transfers (always required)
+    if (isTransfer && !destinationAccountId) {
       setError("Please select a destination account for the transfer");
       setLoading(false);
       return;
@@ -578,19 +586,22 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
                 <option value="PURCHASE">Purchase</option>
               </>
             )}
-            <option value="TRANSFER_OUT">Transfer Out</option>
-            {availableAccounts.length > 0 && (
-              <option value="TRANSFER_IN">Transfer In</option>
-            )}
+            {canTransfer && <option value="TRANSFER_OUT">Transfer Out</option>}
+            {canTransfer && <option value="TRANSFER_IN">Transfer In</option>}
           </select>
-          {isCustomer && (
+          {isCustomer && !canTransfer && (
+            <p style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+              ⚠️ You need at least one other account to make transfers. Please contact support to open another account.
+            </p>
+          )}
+          {isCustomer && canTransfer && (
             <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
               Regular users can only transfer between accounts
             </p>
           )}
         </div>
 
-        {showDestinationAccount && (
+        {isTransfer && canTransfer && (
           <div className="form-group">
             <label className="form-label">
               {transactionType === "TRANSFER_OUT" ? "Transfer To Account" : "Transfer From Account"}
@@ -609,11 +620,6 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
                 </option>
               ))}
             </select>
-            {availableAccounts.length === 0 && (
-              <p style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
-                You need at least one other account to make transfers
-              </p>
-            )}
           </div>
         )}
 
@@ -656,9 +662,18 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
         )}
 
         <div className="form-actions">
-          <button type="submit" className="btn" disabled={loading}>
+          <button 
+            type="submit" 
+            className="btn" 
+            disabled={loading || (isTransfer && !canTransfer)}
+          >
             {loading ? "Processing..." : "Create Transaction"}
           </button>
+          {isTransfer && !canTransfer && (
+            <p style={{ fontSize: "12px", color: "#dc2626", marginTop: "8px" }}>
+              Cannot create transfer: You need at least one other account
+            </p>
+          )}
         </div>
 
         <div style={{ marginTop: "0.75rem", fontSize: "12px", color: "#6b7280" }}>
