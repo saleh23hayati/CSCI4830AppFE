@@ -918,7 +918,17 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
       // Format error message to be more user-friendly
       let errorMsg = err.message || "An error occurred while creating the transaction";
       if (errorMsg.includes("Insufficient funds")) {
-        const sourceBalance = sourceAccount?.balance || 0;
+        // Find the source account for error message
+        let sourceAccountForError = null;
+        if (isTransfer) {
+          const sourceAccountIdForError = transactionType === "TRANSFER_OUT" 
+            ? accountId 
+            : parseInt(destinationAccountId);
+          sourceAccountForError = accounts.find(acc => acc.id === sourceAccountIdForError);
+        } else {
+          sourceAccountForError = accounts.find(acc => acc.id === accountId);
+        }
+        const sourceBalance = sourceAccountForError?.balance || 0;
         errorMsg = `You don't have enough funds. Your balance is $${sourceBalance.toFixed(2)}, but you're trying to transfer $${amountNum.toFixed(2)}. Please reduce the amount.`;
       } else if (errorMsg.includes("Account not found")) {
         errorMsg = "One of the accounts doesn't exist. Please refresh the page and try again.";
