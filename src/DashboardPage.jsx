@@ -220,7 +220,7 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             <h1 className="page-title">Dashboard</h1>
             <p className="page-subtitle">Signed in as {username}</p>
           </div>
-          <div style={{ display: "flex", gap: "10px", marginLeft: "auto" }}>
+          <div style={{ display: "flex", gap: "10px", flexShrink: 0 }}>
             <button className="btn btn-secondary" onClick={() => setShowCreateAccountForm(!showCreateAccountForm)}>
               {showCreateAccountForm ? "Cancel" : "New Account"}
             </button>

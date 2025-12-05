@@ -92,14 +92,22 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-end;
+  align-items: flex-start;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.card-head > div:first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .page-title {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .page-subtitle {
@@ -122,6 +130,7 @@
   display: grid;
   grid-template-columns: minmax(260px, 360px) minmax(420px, 1fr);
   gap: 24px;
+  align-items: start;
 }
 
 /* right column card */
@@ -151,6 +160,9 @@
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   cursor: pointer;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .acct:hover {
@@ -165,18 +177,27 @@
 .acct-type {
   font-weight: 600;
   font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .acct-nick {
   grid-column: 1 / -1;
   font-size: 12px;
   color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .acct-balance {
   justify-self: end;
   font-weight: 700;
   font-size: 14px;
+  white-space: nowrap;
+  margin-left: 8px;
 }
 
 .empty {
@@ -198,12 +219,16 @@
 .detail-title {
   margin: 0 0 4px;
   font-size: 18px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .detail-sub {
   margin: 0 0 16px;
   font-size: 13px;
   color: #6b7280;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .detail-stat {
@@ -221,6 +246,7 @@
   margin-top: 18px;
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* Generic button */
@@ -436,6 +462,30 @@
 
   .home-grid {
     grid-template-columns: 1fr;
+  }
+
+  .card-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-head > div:last-child {
+    margin-top: 12px;
+    width: 100%;
+  }
+
+  .card-head > div:last-child > * {
+    flex: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .detail-actions {
+    flex-direction: column;
+  }
+
+  .detail-actions > * {
+    width: 100%;
   }
 }
 
