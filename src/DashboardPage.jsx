@@ -226,7 +226,7 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             </button>
             <button 
               className="btn" 
-              onClick={onRefresh}
+              onClick={() => onRefresh()}
               disabled={loading}
               style={{ 
                 opacity: loading ? 0.6 : 1,
@@ -459,7 +459,7 @@ function TransactionsPage({ transactions, loading, onRefresh, accounts = [] }) {
         <h1 className="page-title">Transactions</h1>
         <button 
           className="btn" 
-          onClick={onRefresh} 
+          onClick={() => onRefresh()} 
           disabled={loading}
           style={{ 
             marginLeft: "auto",
@@ -743,7 +743,7 @@ function FraudAlertsPage({ alerts, loading, onRefresh }) {
         <h1 className="page-title">Fraud alerts</h1>
         <button 
           className="btn" 
-          onClick={onRefresh} 
+          onClick={() => onRefresh()} 
           disabled={loading}
           style={{ 
             marginLeft: "auto",
