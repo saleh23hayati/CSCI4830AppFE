@@ -220,8 +220,12 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
             <h1 className="page-title">Dashboard</h1>
             <p className="page-subtitle">Signed in as {username}</p>
           </div>
-          <div style={{ display: "flex", gap: "10px", flexShrink: 0 }}>
-            <button className="btn btn-secondary" onClick={() => setShowCreateAccountForm(!showCreateAccountForm)}>
+          <div style={{ display: "flex", gap: "10px", flexShrink: 0, alignItems: "flex-start" }}>
+            <button 
+              className="btn btn-secondary" 
+              onClick={() => setShowCreateAccountForm(!showCreateAccountForm)}
+              style={{ whiteSpace: "nowrap" }}
+            >
               {showCreateAccountForm ? "Cancel" : "New Account"}
             </button>
             <button 
@@ -230,7 +234,8 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
               disabled={loading}
               style={{ 
                 opacity: loading ? 0.6 : 1,
-                cursor: loading ? "not-allowed" : "pointer"
+                cursor: loading ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap"
               }}
             >
               {loading ? "⏳ Refreshing..." : "Refresh"}

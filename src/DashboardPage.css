@@ -79,6 +79,8 @@
   border: 1px solid rgba(15, 23, 42, 0.06);
   padding: 16px 18px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .card.full {
@@ -91,15 +93,25 @@
 .card-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   align-items: flex-start;
   margin-bottom: 16px;
   flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .card-head > div:first-child {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: calc(100% - 200px);
+}
+
+.card-head > div:last-child {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .page-title {
@@ -131,6 +143,8 @@
   grid-template-columns: minmax(260px, 360px) minmax(420px, 1fr);
   gap: 24px;
   align-items: start;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* right column card */
@@ -154,15 +168,16 @@
 
 .acct {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px;
-  padding: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 12px;
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   cursor: pointer;
   min-width: 0;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .acct:hover {
@@ -181,6 +196,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  grid-row: 1;
+  grid-column: 1;
 }
 
 .acct-nick {
@@ -194,10 +211,12 @@
 
 .acct-balance {
   justify-self: end;
+  align-self: start;
   font-weight: 700;
   font-size: 14px;
   white-space: nowrap;
-  margin-left: 8px;
+  flex-shrink: 0;
+  grid-row: 1;
 }
 
 .empty {
@@ -469,6 +488,10 @@
     align-items: stretch;
   }
 
+  .card-head > div:first-child {
+    max-width: 100%;
+  }
+
   .card-head > div:last-child {
     margin-top: 12px;
     width: 100%;
@@ -476,6 +499,27 @@
 
   .card-head > div:last-child > * {
     flex: 1;
+  }
+}
+
+@media (max-width: 1200px) {
+  .card-head > div:first-child {
+    max-width: calc(100% - 250px);
+  }
+}
+
+@media (max-width: 1000px) {
+  .card-head {
+    flex-direction: column;
+  }
+
+  .card-head > div:first-child {
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+
+  .card-head > div:last-child {
+    width: 100%;
   }
 }
 
