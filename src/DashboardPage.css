@@ -256,6 +256,30 @@
   background: #4b5563 !important;
 }
 
+/* Quick Filter Buttons */
+.quick-filter-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-filter-btn:hover {
+  background: #f3f4f6;
+  border-color: rgba(15, 23, 42, 0.2);
+}
+
+.quick-filter-btn.active {
+  background: linear-gradient(90deg, #4f46e5, #06b6d4);
+  color: #ffffff;
+  border-color: transparent;
+  font-weight: 500;
+}
+
 /* Transactions page */
 .filter-row {
   display: flex;

@@ -170,6 +170,7 @@ export default function DashboardPage({ user, onLogout }) {
             transactions={transactions}
             loading={loading}
             onRefresh={loadTransactions}
+            accounts={accounts}
           />
         )}
         {activeTab === "fraud" && (
@@ -326,19 +327,120 @@ function DashboardHome({ username, accounts, loading, onRefresh, goTransactions 
 
 /* ------------ TRANSACTIONS PAGE ------------ */
 
-function TransactionsPage({ transactions, loading, onRefresh }) {
+function TransactionsPage({ transactions, loading, onRefresh, accounts = [] }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [quickFilter, setQuickFilter] = useState("all"); // "all" | "today" | "week" | "month"
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const txDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    if (txDate.getTime() === today.getTime()) {
+      return `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } else if (txDate.getTime() === yesterday.getTime()) {
+      return `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } else {
+      const daysDiff = Math.floor((today - txDate) / (1000 * 60 * 60 * 24));
+      if (daysDiff < 7) {
+        return `${daysDiff} days ago, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      } else {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+          hour: 'numeric', 
+          minute: '2-digit' 
+        });
+      }
+    }
+  };
+
+  // Get transaction type icon and color
+  const getTransactionTypeInfo = (type) => {
+    switch (type) {
+      case "DEPOSIT":
+      case "TRANSFER_IN":
+      case "REFUND":
+        return { icon: "⬇️", color: "#16a34a", label: type.replace("_", " ") };
+      case "WITHDRAWAL":
+      case "TRANSFER_OUT":
+      case "PURCHASE":
+      case "FEE":
+        return { icon: "⬆️", color: "#dc2626", label: type.replace("_", " ") };
+      default:
+        return { icon: "💳", color: "#6b7280", label: type || "Transaction" };
+    }
+  };
+
+  // Apply quick filters
+  const getQuickFilterDates = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (quickFilter) {
+      case "today":
+        return { from: today.toISOString().split("T")[0], to: now.toISOString().split("T")[0] };
+      case "week":
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return { from: weekAgo.toISOString().split("T")[0], to: now.toISOString().split("T")[0] };
+      case "month":
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        return { from: monthAgo.toISOString().split("T")[0], to: now.toISOString().split("T")[0] };
+      default:
+        return { from: "", to: "" };
+    }
+  };
 
   const filtered = useMemo(() => {
+    const quickDates = getQuickFilterDates();
+    const effectiveFrom = from || quickDates.from;
+    const effectiveTo = to || quickDates.to;
+    
     return transactions.filter((t) => {
-      if (!t.transactionTimestamp) return true;
-      const txDate = t.transactionTimestamp.split("T")[0];
-      if (from && txDate < from) return false;
-      if (to && txDate > to) return false;
+      // Date filter
+      if (effectiveFrom || effectiveTo) {
+        if (!t.transactionTimestamp) return false;
+        const txDate = t.transactionTimestamp.split("T")[0];
+        if (effectiveFrom && txDate < effectiveFrom) return false;
+        if (effectiveTo && txDate > effectiveTo) return false;
+      }
+      
+      // Account filter
+      if (selectedAccountId) {
+        if (!t.account || t.account.id !== parseInt(selectedAccountId)) return false;
+      }
+      
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const desc = (t.description || "").toLowerCase();
+        const merchant = (t.merchantName || "").toLowerCase();
+        const type = (t.transactionType || "").toLowerCase();
+        const amount = (t.amount || 0).toString();
+        
+        if (!desc.includes(query) && 
+            !merchant.includes(query) && 
+            !type.includes(query) && 
+            !amount.includes(query)) {
+          return false;
+        }
+      }
+      
       return true;
     });
-  }, [transactions, from, to]);
+  }, [transactions, from, to, searchQuery, selectedAccountId, quickFilter]);
 
   if (loading) {
     return (
@@ -368,46 +470,190 @@ function TransactionsPage({ transactions, loading, onRefresh }) {
           {loading ? "⏳ Refreshing..." : "Refresh"}
         </button>
       </div>
-      <div className="filter-row" style={{ marginBottom: "1rem" }}>
-        <label>
-          From
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="date-input"
-          />
-        </label>
-        <label>
-          To
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="date-input"
-          />
-        </label>
+      {/* Quick Filters */}
+      <div style={{ marginBottom: "1rem", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <button
+          className={`quick-filter-btn ${quickFilter === "all" ? "active" : ""}`}
+          onClick={() => {
+            setQuickFilter("all");
+            setFrom("");
+            setTo("");
+          }}
+        >
+          All
+        </button>
+        <button
+          className={`quick-filter-btn ${quickFilter === "today" ? "active" : ""}`}
+          onClick={() => {
+            setQuickFilter("today");
+            setFrom("");
+            setTo("");
+          }}
+        >
+          Today
+        </button>
+        <button
+          className={`quick-filter-btn ${quickFilter === "week" ? "active" : ""}`}
+          onClick={() => {
+            setQuickFilter("week");
+            setFrom("");
+            setTo("");
+          }}
+        >
+          This Week
+        </button>
+        <button
+          className={`quick-filter-btn ${quickFilter === "month" ? "active" : ""}`}
+          onClick={() => {
+            setQuickFilter("month");
+            setFrom("");
+            setTo("");
+          }}
+        >
+          This Month
+        </button>
+      </div>
+
+      {/* Search and Filters */}
+      <div style={{ marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+          {/* Search */}
+          <div style={{ flex: "1", minWidth: "200px" }}>
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="form-input"
+              style={{ width: "100%" }}
+            />
+          </div>
+          
+          {/* Account Filter */}
+          {accounts.length > 1 && (
+            <div style={{ minWidth: "200px" }}>
+              <select
+                className="form-input"
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                style={{ width: "100%" }}
+              >
+                <option value="">All Accounts</option>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.accountType || "Account"} •••• {acc.accountNumber?.slice(-4) || acc.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+        
+        {/* Date Range (when not using quick filter) */}
+        {quickFilter === "all" && (
+          <div className="filter-row">
+            <label>
+              From
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => {
+                  setFrom(e.target.value);
+                  setQuickFilter("all");
+                }}
+                className="date-input"
+              />
+            </label>
+            <label>
+              To
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => {
+                  setTo(e.target.value);
+                  setQuickFilter("all");
+                }}
+                className="date-input"
+              />
+            </label>
+            {(from || to) && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                }}
+                style={{ fontSize: "12px", padding: "6px 12px" }}
+              >
+                Clear Dates
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Transaction Count */}
+      <div style={{ marginBottom: "0.75rem", fontSize: "13px", color: "#6b7280" }}>
+        Showing {filtered.length} {filtered.length === 1 ? "transaction" : "transactions"}
+        {searchQuery && ` matching "${searchQuery}"`}
+        {selectedAccountId && ` for selected account`}
       </div>
 
       <div className="tx-list">
         {filtered.map((t) => {
           const isPositive = t.transactionType === "DEPOSIT" || t.transactionType === "TRANSFER_IN" || t.transactionType === "REFUND";
           const amount = t.amount || 0;
-          const date = t.transactionTimestamp ? t.transactionTimestamp.split("T")[0] : "N/A";
+          const typeInfo = getTransactionTypeInfo(t.transactionType);
           const desc = t.description || t.merchantName || `${t.transactionType} Transaction`;
+          const accountInfo = t.account ? accounts.find(a => a.id === t.account.id) : null;
           
           return (
             <div key={t.id} className="tx-row">
-              <div className="tx-meta">
-                <div className="tx-desc">{desc}</div>
-                <div className="tx-date">{date}</div>
-                {t.fraudStatus === "FLAGGED" && (
-                  <div style={{ color: "red", fontSize: "0.85em", marginTop: "0.25rem" }}>
-                    ⚠️ Flagged for review
+              <div className="tx-meta" style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "18px" }}>{typeInfo.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="tx-desc">{desc}</div>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "4px" }}>
+                      <div className="tx-date">{formatDate(t.transactionTimestamp)}</div>
+                      {accountInfo && accounts.length > 1 && (
+                        <span style={{ fontSize: "11px", color: "#9ca3af" }}>
+                          {accountInfo.accountType} •••• {accountInfo.accountNumber?.slice(-4)}
+                        </span>
+                      )}
+                      <span style={{ 
+                        fontSize: "11px", 
+                        padding: "2px 6px", 
+                        borderRadius: "4px",
+                        backgroundColor: typeInfo.color + "20",
+                        color: typeInfo.color,
+                        fontWeight: "500"
+                      }}>
+                        {typeInfo.label}
+                      </span>
+                    </div>
+                    {t.fraudStatus === "FLAGGED" && (
+                      <div style={{ 
+                        color: "#dc2626", 
+                        fontSize: "0.85em", 
+                        marginTop: "0.25rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px"
+                      }}>
+                        <span>⚠️</span>
+                        <span>Flagged for review</span>
+                        {t.fraudReasons && (
+                          <span style={{ color: "#9ca3af", fontSize: "0.9em" }}>
+                            ({t.fraudReasons})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-              <div className={`tx-amount ${isPositive ? "tx-positive" : "tx-negative"}`}>
+              <div className={`tx-amount ${isPositive ? "tx-positive" : "tx-negative"}`} style={{ fontSize: "16px", fontWeight: "700" }}>
                 {isPositive ? "+" : "-"}${Math.abs(amount).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                 })}
@@ -416,7 +662,32 @@ function TransactionsPage({ transactions, loading, onRefresh }) {
           );
         })}
         {filtered.length === 0 && (
-          <div className="empty">No transactions found.</div>
+          <div className="empty" style={{ padding: "2rem", textAlign: "center" }}>
+            {searchQuery || selectedAccountId || from || to ? (
+              <>
+                <div style={{ fontSize: "24px", marginBottom: "0.5rem" }}>🔍</div>
+                <div>No transactions found matching your filters.</div>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedAccountId("");
+                    setFrom("");
+                    setTo("");
+                    setQuickFilter("all");
+                  }}
+                  style={{ marginTop: "1rem", fontSize: "14px" }}
+                >
+                  Clear Filters
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: "24px", marginBottom: "0.5rem" }}>📋</div>
+                <div>No transactions yet.</div>
+              </>
+            )}
+          </div>
         )}
       </div>
     </section>
