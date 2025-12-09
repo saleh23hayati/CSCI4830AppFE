@@ -845,80 +845,124 @@ function TransactionForm({ accountId, accountNumber, currentBalance, accounts, u
     }
 
     try {
-      // Determine source and destination accounts based on transfer type
-      // TRANSFER_OUT: source = current account (accountId), destination = dropdown account
-      // TRANSFER_IN: source = dropdown account, destination = current account (accountId)
-      
-      let sourceAccountId, destinationAccountIdNum;
-      
-      if (transactionType === "TRANSFER_OUT") {
-        sourceAccountId = accountId;
-        destinationAccountIdNum = parseInt(destinationAccountId);
-      } else {
-        // TRANSFER_IN
-        sourceAccountId = parseInt(destinationAccountId);
-        destinationAccountIdNum = accountId;
-      }
-      
-      // Get account numbers for descriptions
-      const sourceAccount = accounts.find(acc => acc.id === sourceAccountId);
-      const destinationAccount = accounts.find(acc => acc.id === destinationAccountIdNum);
-      const sourceAccountNumber = sourceAccount?.accountNumber || sourceAccountId.toString();
-      const destinationAccountNumber = destinationAccount?.accountNumber || destinationAccountIdNum.toString();
-      
-      // Create TRANSFER_OUT on source account first (this checks for sufficient funds)
-      const transferOutData = {
-        account: { id: sourceAccountId },
-        transactionType: "TRANSFER_OUT",
-        amount: amountNum,
-        description: description || `Transfer to ${destinationAccountNumber}`,
-      };
-      
-      const transferOutResult = await onCreateTransaction(transferOutData);
-      
-      if (!transferOutResult.success) {
-        // Format error message to be more user-friendly
-        let errorMsg = transferOutResult.error || "Failed to initiate transfer";
-        if (errorMsg.includes("Insufficient funds")) {
-          const sourceBalance = sourceAccount?.balance || 0;
-          errorMsg = `You don't have enough funds in ${sourceAccountNumber}. Your balance is $${sourceBalance.toFixed(2)}, but you're trying to transfer $${amountNum.toFixed(2)}. Please reduce the amount or add funds to your account.`;
+      if (isTransfer) {
+        // Handle transfer transactions
+        // Determine source and destination accounts based on transfer type
+        // TRANSFER_OUT: source = current account (accountId), destination = dropdown account
+        // TRANSFER_IN: source = dropdown account, destination = current account (accountId)
+        
+        let sourceAccountId, destinationAccountIdNum;
+        
+        if (transactionType === "TRANSFER_OUT") {
+          sourceAccountId = accountId;
+          destinationAccountIdNum = parseInt(destinationAccountId);
+        } else {
+          // TRANSFER_IN
+          sourceAccountId = parseInt(destinationAccountId);
+          destinationAccountIdNum = accountId;
         }
-        setError(errorMsg);
-        setLoading(false);
-        return;
-      }
-      
-      // If TRANSFER_OUT succeeds, create corresponding TRANSFER_IN on destination account
-      try {
-        const transferInData = {
-          account: { id: destinationAccountIdNum },
-          transactionType: "TRANSFER_IN",
+        
+        // Get account numbers for descriptions
+        const sourceAccount = accounts.find(acc => acc.id === sourceAccountId);
+        const destinationAccount = accounts.find(acc => acc.id === destinationAccountIdNum);
+        const sourceAccountNumber = sourceAccount?.accountNumber || sourceAccountId.toString();
+        const destinationAccountNumber = destinationAccount?.accountNumber || destinationAccountIdNum.toString();
+        
+        // Create TRANSFER_OUT on source account first (this checks for sufficient funds)
+        const transferOutData = {
+          account: { id: sourceAccountId },
+          transactionType: "TRANSFER_OUT",
           amount: amountNum,
-          description: description || `Transfer from ${sourceAccountNumber}`,
+          description: description || `Transfer to ${destinationAccountNumber}`,
         };
-        await onCreateTransaction(transferInData);
-      } catch (transferErr) {
-        console.error("Failed to create corresponding TRANSFER_IN:", transferErr);
-        setError("Transfer initiated but failed to complete. Please contact support.");
-        setLoading(false);
-        return;
+        
+        const transferOutResult = await onCreateTransaction(transferOutData);
+        
+        if (!transferOutResult.success) {
+          // Format error message to be more user-friendly
+          let errorMsg = transferOutResult.error || "Failed to initiate transfer";
+          if (errorMsg.includes("Insufficient funds")) {
+            const sourceBalance = sourceAccount?.balance || 0;
+            errorMsg = `You don't have enough funds in ${sourceAccountNumber}. Your balance is $${sourceBalance.toFixed(2)}, but you're trying to transfer $${amountNum.toFixed(2)}. Please reduce the amount or add funds to your account.`;
+          }
+          setError(errorMsg);
+          setLoading(false);
+          return;
+        }
+        
+        // If TRANSFER_OUT succeeds, create corresponding TRANSFER_IN on destination account
+        try {
+          const transferInData = {
+            account: { id: destinationAccountIdNum },
+            transactionType: "TRANSFER_IN",
+            amount: amountNum,
+            description: description || `Transfer from ${sourceAccountNumber}`,
+          };
+          await onCreateTransaction(transferInData);
+        } catch (transferErr) {
+          console.error("Failed to create corresponding TRANSFER_IN:", transferErr);
+          setError("Transfer initiated but failed to complete. Please contact support.");
+          setLoading(false);
+          return;
+        }
+        
+        // Both transactions succeeded
+        const result = { success: true };
+        
+        const successMsg = `Transfer of $${amountNum.toFixed(2)} completed successfully!`;
+        
+        setSuccess(successMsg);
+        // Reset form
+        setAmount("");
+        setDescription("");
+        setDestinationAccountId("");
+        // Clear success message after 3 seconds and call onSuccess
+        setTimeout(async () => {
+          setSuccess("");
+          await onSuccess(result);
+        }, 2000);
+      } else {
+        // Handle non-transfer transactions (DEPOSIT, WITHDRAWAL, PURCHASE)
+        if (!accountId) {
+          setError("Account is required");
+          setLoading(false);
+          return;
+        }
+        
+        const transactionData = {
+          account: { id: accountId },
+          transactionType: transactionType,
+          amount: amountNum,
+          description: description || "",
+        };
+        
+        const result = await onCreateTransaction(transactionData);
+        
+        if (!result.success) {
+          let errorMsg = result.error || "Failed to create transaction";
+          if (errorMsg.includes("Insufficient funds")) {
+            const currentAccount = accounts.find(acc => acc.id === accountId);
+            const currentBalance = currentAccount?.balance || 0;
+            errorMsg = `You don't have enough funds. Your balance is $${currentBalance.toFixed(2)}, but you're trying to ${transactionType.toLowerCase()} $${amountNum.toFixed(2)}. Please reduce the amount.`;
+          }
+          setError(errorMsg);
+          setLoading(false);
+          return;
+        }
+        
+        // Transaction succeeded
+        const successMsg = `${transactionType.charAt(0) + transactionType.slice(1).toLowerCase()} of $${amountNum.toFixed(2)} completed successfully!`;
+        
+        setSuccess(successMsg);
+        // Reset form
+        setAmount("");
+        setDescription("");
+        // Clear success message after 3 seconds and call onSuccess
+        setTimeout(async () => {
+          setSuccess("");
+          await onSuccess(result);
+        }, 2000);
       }
-      
-      // Both transactions succeeded
-      const result = { success: true };
-      
-      const successMsg = `Transfer of $${amountNum.toFixed(2)} completed successfully!`;
-      
-      setSuccess(successMsg);
-      // Reset form
-      setAmount("");
-      setDescription("");
-      setDestinationAccountId("");
-      // Clear success message after 3 seconds and call onSuccess
-      setTimeout(async () => {
-        setSuccess("");
-        await onSuccess(result);
-      }, 2000);
     } catch (err) {
       // Format error message to be more user-friendly
       let errorMsg = err.message || "An error occurred while creating the transaction";
